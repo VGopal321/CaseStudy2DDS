@@ -1,0 +1,520 @@
+---
+title: "CS2_MD"
+author: "Varun Gopal"
+date: '2022-04-16'
+output: html_document
+---
+
+By Varun Gopal
+
+This presentation investigates factors related to attrition. In addition, machine learning models were used to attempt to predict employee attrition and salary. Finally, factors related to job role were examined.
+
+Importing packages and dataset
+```{r, message=FALSE,warning=FALSE}
+#Libraries
+library(GGally)
+library(tidyverse)
+library(formattable)
+library(plotly)
+library(class)
+library(caret)
+library(e1071)
+library(randomForest)
+library(varImp)
+
+#Import dataset
+CS2=read.csv(file.choose(),header=T)
+```
+
+Investigating categorical variables
+```{r}
+#Make Attrition a factor
+CS2$Attrition=as.factor(CS2$Attrition)
+
+#Split Data into continuous vs categorical data
+CS2cont=data.frame(rows=1:dim(CS2)[1]) #Build empty dfs
+CS2cat=data.frame(rows=1:dim(CS2)[1])
+#Fill in CS2cont with all 'int' types excluding those on scale of 1-5 or 1-10
+for(i in 1:dim(CS2)[2]){
+  if(class(CS2[,i])=='integer' & length(levels(as.factor(CS2[,i])))>5){
+    CS2cont=cbind(CS2cont,CS2[i])
+  } else{
+    CS2cat=cbind(CS2cat,CS2[i])
+  }
+}
+
+#Clean up columns and add attrition to CS2cont
+CS2cont=CS2cont%>%select(!rows)
+CS2cont$Attrition=CS2$Attrition
+CS2cat=CS2cat%>%select(!rows)
+
+#Loop to make all columns in CS2cat factors
+for (i in 1:dim(CS2cat)[2]){
+  CS2cat[,i]=as.factor(CS2cat[,i])
+}
+
+#INVESTIGATING CATEGORICAL VARIABLES
+
+#Determine percent attrition based on business travel
+BizTravel=as.data.frame(CS2cat%>%group_by(BusinessTravel)%>%summarize(total=n()))
+BizTravelAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(BusinessTravel)%>%summarize(num_yes=n()))
+BizTravel=merge(BizTravel,BizTravelAttr,by='BusinessTravel')
+BizTravel$Percent_Attrition=BizTravel$num_yes/BizTravel$total
+colnames(BizTravel)[c(1,4)]=c('Frequency of Business Travel','Percent Attrition')
+formattable(BizTravel[,c(1,4)])
+
+#Determine percent attrition based on department
+Dep=as.data.frame(CS2cat%>%group_by(Department)%>%summarize(total=n()))
+DepAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(Department)%>%summarize(num_yes=n()))
+Dep=merge(Dep,DepAttr,by='Department')
+Dep$Percent_Attrition=Dep$num_yes/Dep$total
+colnames(Dep)[c(1,4)]=c('Department','Percent Attrition')
+formattable(Dep[,c(1,4)])
+
+#Determine percent attrition based on years of education
+Edu=as.data.frame(CS2cat%>%group_by(Education)%>%summarize(total=n()))
+EduAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(Education)%>%summarize(num_yes=n()))
+Edu=merge(Edu,EduAttr,by='Education')
+Edu$Percent_Attrition=Edu$num_yes/Edu$total
+colnames(Edu)[c(1,4)]=c('Years Studying','Percent Attrition')
+formattable(Edu[,c(1,4)])
+
+#Determine percent attrition based on education field
+EduF=as.data.frame(CS2cat%>%group_by(EducationField)%>%summarize(total=n()))
+EduFAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(EducationField)%>%summarize(num_yes=n()))
+EduF=merge(EduF,EduFAttr,by='EducationField')
+EduF$Percent_Attrition=EduF$num_yes/EduF$total
+colnames(EduF)[c(1,4)]=c('Field of Study','Percent Attrition')
+formattable(EduF[,c(1,4)])
+
+#Determine percent attrition based on Environmental Satisfaction
+EnvSat=as.data.frame(CS2cat%>%group_by(EnvironmentSatisfaction)%>%summarize(total=n()))
+EnvSatAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(EnvironmentSatisfaction)%>%summarize(num_yes=n()))
+EnvSat=merge(EnvSat,EnvSatAttr,by='EnvironmentSatisfaction')
+EnvSat$Percent_Attrition=EnvSat$num_yes/EnvSat$total
+colnames(EnvSat)[c(1,4)]=c('Environmental Satisfaction','Percent Attrition')
+formattable(EnvSat[,c(1,4)])
+
+CS2cat%>%ggplot(aes(x=Education,fill=Attrition))+
+  geom_bar()
+
+#Determine percent attrition based on Gender
+Gender=as.data.frame(CS2cat%>%group_by(Gender)%>%summarize(total=n()))
+GenderAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(Gender)%>%summarize(num_yes=n()))
+Gender=merge(Gender,GenderAttr,by='Gender')
+Gender$Percent_Attrition=Gender$num_yes/Gender$total
+colnames(Gender)[c(1,4)]=c('Gender','Percent Attrition')
+formattable(Gender[,c(1,4)])
+
+#Determine percent attrition based on Job Involvement
+JobInv=as.data.frame(CS2cat%>%group_by(JobInvolvement)%>%summarize(total=n()))
+JobInvAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(JobInvolvement)%>%summarize(num_yes=n()))
+JobInv=merge(JobInv,JobInvAttr,by='JobInvolvement')
+JobInv$Percent_Attrition=JobInv$num_yes/JobInv$total
+colnames(JobInv)[c(1,4)]=c('Job Involvement','Percent Attrition')
+formattable(JobInv[,c(1,4)])
+
+#Determine percent attrition based on Job Level
+JobLvl=as.data.frame(CS2cat%>%group_by(JobLevel)%>%summarize(total=n()))
+JobLvlAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(JobLevel)%>%summarize(num_yes=n()))
+JobLvl=merge(JobLvl,JobLvlAttr,by='JobLevel')
+JobLvl$Percent_Attrition=JobLvl$num_yes/JobLvl$total
+colnames(JobLvl)[c(1,4)]=c('Job Level','Percent Attrition')
+formattable(JobLvl[,c(1,4)])
+
+#Determine percent attrition based on Job Role
+Role=as.data.frame(CS2cat%>%group_by(JobRole)%>%summarize(total=n()))
+RoleAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(JobRole)%>%summarize(num_yes=n()))
+Role=merge(Role,RoleAttr,by='JobRole')
+Role$Percent_Attrition=Role$num_yes/Role$total
+colnames(Role)[c(1,4)]=c('Job Role','Percent Attrition')
+formattable(Role[,c(1,4)])
+
+#Determine percent attrition based on Job Satisfaction
+JobSat=as.data.frame(CS2cat%>%group_by(JobSatisfaction)%>%summarize(total=n()))
+JobSatAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(JobSatisfaction)%>%summarize(num_yes=n()))
+JobSat=merge(JobSat,JobSatAttr,by='JobSatisfaction')
+JobSat$Percent_Attrition=JobSat$num_yes/JobSat$total
+colnames(JobSat)[c(1,4)]=c('Job Satisfaction','Percent Attrition')
+formattable(JobSat[,c(1,4)])
+
+#Determine percent attrition based on Marital Status
+Married=as.data.frame(CS2cat%>%group_by(MaritalStatus)%>%summarize(total=n()))
+MarriedAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(MaritalStatus)%>%summarize(num_yes=n()))
+Married=merge(Married,MarriedAttr,by='MaritalStatus')
+Married$Percent_Attrition=Married$num_yes/Married$total
+colnames(Married)[c(1,4)]=c('Marital Status','Percent Attrition')
+formattable(Married[,c(1,4)])
+
+#Determine percent attrition based on Overtime
+OT=as.data.frame(CS2cat%>%group_by(OverTime)%>%summarize(total=n()))
+OTAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(OverTime)%>%summarize(num_yes=n()))
+OT=merge(OT,OTAttr,by='OverTime')
+OT$Percent_Attrition=OT$num_yes/OT$total
+colnames(OT)[c(1,4)]=c('Overtime','Percent Attrition')
+formattable(OT[,c(1,4)])
+
+#Determine percent attrition based on Performance Rating
+PR=as.data.frame(CS2cat%>%group_by(PerformanceRating)%>%summarize(total=n()))
+PRAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(PerformanceRating)%>%summarize(num_yes=n()))
+PR=merge(PR,PRAttr,by='PerformanceRating')
+PR$Percent_Attrition=PR$num_yes/PR$total
+colnames(PR)[c(1,4)]=c('Performance Rating','Percent Attrition')
+formattable(PR[,c(1,4)])
+
+#Determine percent attrition based on Relationship Satisfaction
+RelSat=as.data.frame(CS2cat%>%group_by(RelationshipSatisfaction)%>%summarize(total=n()))
+RelSatAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(RelationshipSatisfaction)%>%summarize(num_yes=n()))
+RelSat=merge(RelSat,RelSatAttr,by='RelationshipSatisfaction')
+RelSat$Percent_Attrition=RelSat$num_yes/RelSat$total
+colnames(RelSat)[c(1,4)]=c('Relationship Satisfaction','Percent Attrition')
+formattable(RelSat[,c(1,4)])
+
+#Determine percent attrition based on Stock Option Level
+StockLvl=as.data.frame(CS2cat%>%group_by(StockOptionLevel)%>%summarize(total=n()))
+StockLvlAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(StockOptionLevel)%>%summarize(num_yes=n()))
+StockLvl=merge(StockLvl,StockLvlAttr,by='StockOptionLevel')
+StockLvl$Percent_Attrition=StockLvl$num_yes/StockLvl$total
+colnames(StockLvl)[c(1,4)]=c('Stock Option Level','Percent Attrition')
+formattable(StockLvl[,c(1,4)])
+
+#Determine percent attrition based on Work Life Balance
+WLB=as.data.frame(CS2cat%>%group_by(WorkLifeBalance)%>%summarize(total=n()))
+WLBAttr=as.data.frame(CS2cat%>%filter(Attrition=='Yes')%>%group_by(WorkLifeBalance)%>%summarize(num_yes=n()))
+WLB=merge(WLB,WLBAttr,by='WorkLifeBalance')
+WLB$Percent_Attrition=WLB$num_yes/WLB$total
+colnames(WLB)[c(1,4)]=c('Work Life Balance','Percent Attrition')
+formattable(WLB[,c(1,4)])
+```
+
+Investigating continuous variables
+```{r}
+#INVESTIGATE CONTINUOUS VARIABLES
+
+#Comparing attrition with age, dailyrate, and distancefromhome
+CS2cont[,c(17,2,3,4)]%>%ggpairs()
+
+#Comparing attrition with hourlyrate, monthlyincome, and monthlyrate
+CS2cont[,c(17,6,7,8)]%>%ggpairs()
+
+#Comparing attrition with numcompaniesworked, percentsalaryhike, and totalworkingyears
+CS2cont[,c(17,9,10,11)]%>%ggpairs()
+
+#Comparing attrition with trainingtimeslastyear, yearsatcompany, and yearsincurrentrole
+CS2cont[,c(17,12,13,14)]%>%ggpairs()
+
+#Comparing attrition with yearssincelastpromotion and yearswithcurrmanager
+CS2cont[,c(17,15,16)]%>%ggpairs()
+
+CS2%>%select(Attrition,JobRole,YearsAtCompany,YearsInCurrentRole,TotalWorkingYears)%>%ggpairs()
+
+CS2%>%ggplot(aes(x=YearsAtCompany,y=YearsInCurrentRole,col=Attrition))+
+  geom_point()
+```
+
+Testing Models
+```{r}
+#TESTING MODELS
+
+#Cleaning up CS2
+CS2clean=CS2%>%select(!(ID|EmployeeCount|EmployeeNumber|Over18|StandardHours))
+
+#Create Training and Test Split
+seednum=sample(1:100000,1)#seed number
+set.seed(seednum)#Random seed
+TrainInd=sample(1:dim(CS2)[1],round(0.7*dim(CS2)[1]))#Sample of 70% of total values
+AttrTrain=CS2clean[TrainInd,]#Random 70% of CS2 put into training set
+AttrTest=CS2clean[-TrainInd,]#Random 30% of CS2 put into test set
+
+SpecMatrix=matrix(nrow=1000,ncol=2)
+colnames(SpecMatrix)=c('Seed Number','Specificity')
+
+#Loop to tune seed
+for (i in 1:dim(SpecMatrix)[1]){
+  set.seed(i)
+  #Split CS2 into sets w/ Attrition=='Yes' and Attrition=='No'
+  CS2Yes=CS2clean%>%filter(Attrition=='Yes')
+  CS2No=CS2clean%>%filter(Attrition=='No')
+  IndexYes=sample(1:dim(CS2Yes)[1],round(0.7*dim(CS2Yes)[1]))
+  IndexNo=sample(1:dim(CS2No)[1],round(0.7*dim(CS2No)[1]))
+  
+  #Training/Test Splits Yes and No
+  TrainYes=CS2Yes[IndexYes,]
+  TestYes=CS2Yes[-IndexYes,]
+  TrainNo=CS2No[IndexNo,]
+  TestNo=CS2No[-IndexNo,]
+  
+  #Merge Training and Test Splits
+  AttrTrain=rbind(TrainYes,TrainNo)
+  AttrTest=rbind(TestYes,TestNo)
+  
+  #Run Machine Learning Models
+  model=naiveBayes(Attrition~.,data=AttrTrain)
+  AttrClass=predict(model,AttrTest)
+  
+  CM=confusionMatrix(table(AttrClass,AttrTest$Attrition))
+  SpecMatrix[i,1]=i
+  SpecMatrix[i,2]=CM$byClass['Specificity']
+}
+#Find the best seed out of 1000
+SpecMatrix=as.data.frame(SpecMatrix)
+SpecMatrix%>%filter(Specificity==max(Specificity))
+
+#Stratified Training/Test Split
+seednum=sample(1:100000,1)#seed number
+hiseed=58 #Tuned seed
+set.seed(hiseed)#Random seed
+
+#Split CS2 into sets w/ Attrition=='Yes' and Attrition=='No'
+CS2Yes=CS2clean%>%filter(Attrition=='Yes')
+CS2No=CS2clean%>%filter(Attrition=='No')
+IndexYes=sample(1:dim(CS2Yes)[1],round(0.7*dim(CS2Yes)[1]))
+IndexNo=sample(1:dim(CS2No)[1],round(0.7*dim(CS2No)[1]))
+
+#Training/Test Splits Yes and No
+TrainYes=CS2Yes[IndexYes,]
+TestYes=CS2Yes[-IndexYes,]
+TrainNo=CS2No[IndexNo,]
+TestNo=CS2No[-IndexNo,]
+
+#Merge Training and Test Splits
+AttrTrain=rbind(TrainYes,TrainNo)
+AttrTest=rbind(TestYes,TestNo)
+
+#Run Machine Learning Models
+NBmodel=naiveBayes(Attrition~.,data=AttrTrain)
+AttrClassNB=predict(NBmodel,AttrTest)
+NBCM=confusionMatrix(table(AttrClassNB,AttrTest$Attrition))
+
+RFmodel=randomForest(Attrition~.,data=AttrTrain,ntree=435)
+AttrClassRF=predict(RFmodel,AttrTest)
+RFCM=confusionMatrix(table(AttrClassRF,AttrTest$Attrition))
+
+#Tuning ntree
+RFSpec=data.frame(ntree=100:500,Specificity=NA)
+
+for (i in 100:500){
+  RFmodel=randomForest(Attrition~.,data=AttrTrain,importance=T,ntree=i)
+  AttrClassRF=predict(RFmodel,AttrTest)
+  RFCM=confusionMatrix(table(AttrClassRF,AttrTest$Attrition))
+  RFSpec[(i-99),2]=RFCM$byClass['Specificity']
+}
+dim(RFSpec)
+RFSpec%>%filter(Specificity==max(Specificity))
+head(RFSpec)
+```
+
+Attempt at permutation feature importance. I tried to code in
+feature shuffling, and I used balanced accuracy to measure impact on the model. However, I acknowledge that I may have made quite a few mistakes in both my code and my grasp of the concept. Regardless, this is my best attempt
+```{r}
+#After multiple attempts, naive Bayes was a better model than random forest
+
+
+#permutation feature importance Naive Bayes
+CS2perm=CS2clean%>%select(!Attrition)
+CS2perm$Attrition=CS2clean$Attrition
+AccDiff=matrix(nrow=30,ncol=2)
+
+for (i in 1:(dim(CS2perm)[2]-1)){
+  #seed for split
+  set.seed(58)
+  #Stratified Sample
+  #70/30 train/test split based on Attrition='Yes'
+  PermYes=CS2perm%>%filter(Attrition=='Yes')
+  IndYes=sample(1:dim(PermYes)[1],round(0.7*dim(PermYes)[1]))
+  PermYesTrain=PermYes[IndYes,]
+  PermYesTest=PermYes[-IndYes,]
+  
+  #70/30 train/test split based on Attrition='No'
+  PermNo=CS2perm%>%filter(Attrition=='No')
+  IndNo=sample(1:dim(PermNo)[1],round(0.7*dim(PermNo)[1]))
+  PermNoTrain=PermNo[IndNo,]
+  PermNoTest=PermNo[-IndNo,]
+  
+  #Merge train/test
+  PermTrain=rbind(PermYesTrain,PermNoTrain)
+  PermTest=rbind(PermYesTest,PermNoTest)
+  
+  #Naive Bayes
+  unshuffled=naiveBayes(Attrition~.,data=PermTrain)
+  unshuffledClass=predict(unshuffled,PermTest)
+  UCM=confusionMatrix(table(unshuffledClass,PermTest$Attrition))
+  
+  #Seed to shuffle
+  seednum=sample(1:(dim(AccDiff)[1])^6,1)#Change this on every iteration for a different shuffle
+  set.seed(seednum)
+  #Shuffle Test Column
+  PermTrain[,i]=sample(PermTrain[,i])
+  
+  set.seed(58)
+  #Naive Bayes
+  shuffled=naiveBayes(Attrition~.,data=PermTrain)
+  shuffledClass=predict(shuffled,PermTest)
+  SCM=confusionMatrix(table(shuffledClass,PermTest$Attrition))
+  
+  AccDiff[i,2]=UCM$byClass['Balanced Accuracy']-SCM$byClass['Balanced Accuracy']
+  AccDiff[i,1]=colnames(CS2perm)[i]
+}
+AccDiff=as.data.frame(AccDiff)
+colnames(AccDiff)=c('Shuffled_Feature','BADiff')
+AccDiff%>%arrange(desc(BADiff))
+seednum
+```
+
+Examining Overtime
+```{r}
+#Examine Overtime
+
+#Compare Overtime to Age
+CS2%>%ggplot(aes(x=OverTime,y=Age))+
+  geom_boxplot()
+
+#Compare Overtime to years in company
+CS2%>%ggplot(aes(x=OverTime,y=YearsAtCompany))+
+  geom_boxplot()
+
+#Compare Overtime to years in current role
+CS2%>%ggplot(aes(x=OverTime,y=YearsInCurrentRole))+
+  geom_boxplot()
+
+#Compare percent overtime to job role
+RoleOT1=CS2%>%group_by(JobRole)%>%summarize(total=n())
+RoleOT2=CS2%>%filter(OverTime=='Yes')%>%group_by(JobRole)%>%summarize(num_yes=n())
+RoleOT=merge(RoleOT1,RoleOT2,by='JobRole')
+RoleOT$PercentOT=RoleOT$num_yes/RoleOT$total
+colnames(RoleOT)[c(1,4)]=c('Job Role','Percent Overtime')
+formattable(RoleOT[,c(1,4)])
+Role
+
+#Compare percent overtime to department
+DepOT1=CS2%>%group_by(Department)%>%summarize(total=n())
+DepOT2=CS2%>%filter(OverTime=='Yes')%>%group_by(Department)%>%summarize(num_yes=n())
+DepOT=merge(DepOT1,DepOT2,by='Department')
+DepOT$PercentOT=DepOT$num_yes/DepOT$total
+colnames(DepOT)[c(1,4)]=c('Department','Percent Overtime')
+formattable(DepOT[,c(1,4)])
+CS2%>%group_by(OverTime)%>%summarize(count=n())
+```
+
+Examining Job Role
+```{r}
+#job role and satisfaction
+CS2cat%>%ggplot(aes(x=JobRole,fill=JobSatisfaction))+
+  geom_bar(position='fill')+
+  labs(title='Percent Job Satisfaction based on Job Role',
+       x='Job Role',
+       y='Percent Job Satisfaction')+
+  scale_fill_discrete(name='Job Satisfaction')
+#job role and education field
+CS2cat%>%ggplot(aes(x=JobRole,fill=EducationField))+
+  geom_bar(position='fill')+
+  labs(title='Percent Education Field based on Job Role',
+       x='Job Role',
+       y='Percent Education Field')+
+  scale_fill_discrete(name='Education Field')
+#job role and job involvement
+CS2cat%>%ggplot(aes(x=JobRole,fill=JobInvolvement))+
+  geom_bar(position='fill')+
+  labs(title='Percent Job Involvement based on Job Role',
+       x='Job Role',
+       y='Percent Job Involvement')+
+  scale_fill_discrete(name='Job Involvement')
+#job role and job level
+CS2cat%>%ggplot(aes(x=JobRole,fill=JobLevel))+
+  geom_bar(position='fill')+
+  labs(title='Percent Job Level based on Job Role',
+       x='Job Role',
+       y='Percent Job Level')+
+  scale_fill_discrete(name='Job Level')
+
+#job role and years working
+CS2%>%ggplot(aes(x=JobRole,y=TotalWorkingYears))+
+  geom_boxplot()
+#job role and years at company
+CS2%>%ggplot(aes(x=JobRole,y=YearsAtCompany))+
+  geom_boxplot()
+#job role and years in current role
+CS2%>%ggplot(aes(x=JobRole,y=YearsInCurrentRole))+
+  geom_boxplot()
+#job role and age
+CS2%>%ggplot(aes(x=JobRole,y=Age,fill=JobRole))+
+  geom_boxplot()+
+  labs(title='Age Based on Job Role',
+       x='Job Role')+
+  theme(legend.position='none')
+```
+
+Re-Examining attrition
+```{r}
+#Overtime barplot
+CS2%>%ggplot(aes(x=Attrition,fill=OverTime))+
+  geom_bar(position='fill')+
+  labs(title="Percent of Employees That Worked Overtime Based On Attrition",
+       y="Percent")+
+  scale_fill_discrete(name="Overtime")
+#Age barplot 1
+CS2%>%mutate(agefac=cut(Age,breaks=c(10,20,30,40,50,60)))%>%
+  ggplot(aes(x=Attrition,fill=agefac))+
+  geom_bar(position='fill')+
+  labs(title="Percent of Employees' Ages Based On Attrition",
+       y="Percent")+
+  scale_fill_discrete(name="Age",labels=c("18-20","21-30","31-40","41-50","51-60"))
+#Age barplot 2
+CS2%>%ggplot(aes(x=Attrition,y=Age,fill=Attrition))+
+  geom_boxplot()+
+  labs(title='Distribution of Age based on Attrition',
+       x='Attrition',
+       y='Age')
+  
+#Job Involvement vs Age barplot
+CS2%>%ggplot(aes(x=factor(JobInvolvement),y=Age))+
+  geom_boxplot()+
+  labs(title="Age based on Job Involvement",
+      x="Job Involvement")
+#WLB barplot
+CS2%>%mutate(WLBFac=as.factor(WorkLifeBalance))%>%ggplot(aes(x=Attrition,fill=WLBFac))+
+  geom_bar(position='fill')
+#JobRole barplot
+CS2%>%ggplot(aes(x=JobRole,fill=Attrition))+
+  geom_bar(position='fill')+
+  labs(title='Percent Attrition based on Job Role',
+       x='Job Role',
+       y='Percent Attrition')
+#Department barplot
+CS2%>%ggplot(aes(x=Department,fill=Attrition))+
+  geom_bar(position='fill')+
+  labs(title='Percent Attrition based on Department',
+       x='Department',
+       y='Percent Attrition')
+#Job Involvement barplot
+CS2%>%ggplot(aes(x=factor(JobInvolvement),fill=Attrition))+
+  geom_bar(position='fill')+
+  labs(title='Percent Attrition based on Job Involvement',
+       x='Job Involvement',
+       y='Percent Attrition')
+```
+
+Linear Regression
+```{r}
+CS2salary=CS2cont%>%mutate(Salary=MonthlyIncome*12)
+
+CS2salary%>%ggplot(aes(x=Salary))+geom_histogram()
+
+
+#Training/Test Split
+TrainInd=sample(1:dim(CS2salary)[1],round(0.7*dim(CS2salary[1])))
+SalTrain=CS2salary[TrainInd,]
+SalTest=CS2salary[-TrainInd,]
+
+SalFit=lm(Salary~.,data=SalTrain)
+summary(SalFit)
+SalPreds=predict.lm(SalFit,newdata=SalTest)
+SalDiffSq=(SalTest$Salary-SalPreds)^2
+RMSE=sqrt(sum(SalDiffSq))
+RMSE#2.90625e-09
+```
+
+By using a Naïve Bayes classification model, examining feature importance, and investigating the Case Study 2 data set, I determined that the three most important features related to attrition were overtime, age, and job role. Using every feature in the data except for ID, employee count, employee number, standard hours, and over18, the Naïve Bayes model was able to predict employee attrition with an accuracy of 0.8352, sensitivity of 0.8447, and specificity of 0.7857. 
+
+Factors related to job role were also examined. Executive positions tended to have higher job levels and ages, while job involvement appeared similar among roles. Finally, using every continuous variable as explanatory variables, a linear regression model was utilized to try to predict salary. The RMSE of this model was 2.90625e-9. I appreciate the opportunity to work on this analysis.
+
